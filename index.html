@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🛰️ LEOP Pass Scheduler (Web) — 1단계 프로토타입</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --card: #ffffff; --border: #d9dfe4;
+    --primary: #1565c0; --primary-dark: #0d47a1; --text: #1a1a1a; --muted: #6b7280;
+    --ok: #2e7d32; --fail: #c62828;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Malgun Gothic', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); margin-bottom: 20px; font-size: 14px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  .form-card { flex: 1; min-width: 340px; }
+  .result-card { flex: 2; min-width: 400px; }
+  fieldset { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 14px; padding: 10px 12px; }
+  legend { font-weight: 600; font-size: 13px; color: var(--primary-dark); padding: 0 6px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-top: 8px; margin-bottom: 2px; }
+  input, textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: 'Consolas', monospace; }
+  textarea { resize: vertical; }
+  .row2 { display: flex; gap: 10px; }
+  .row2 > div { flex: 1; }
+  button { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; margin-top: 14px; width: 100%; }
+  button:hover { background: var(--primary-dark); }
+  button:disabled { background: #9e9e9e; cursor: not-allowed; }
+  #status-log { background: #0d1117; color: #c9d1d9; font-family: 'Consolas', monospace; font-size: 12px; padding: 12px; border-radius: 8px; min-height: 90px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 16px; }
+  .ok { color: #7ee787; }
+  .fail { color: #ff7b72; }
+  .info { color: #79c0ff; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: #eef2f6; color: var(--primary-dark); position: sticky; top: 0; }
+  tr:hover { background: #f7fafd; }
+  .empty-msg { color: var(--muted); text-align: center; padding: 30px; font-size: 13px; }
+  .badge { display: inline-block; background: #e3f2fd; color: var(--primary-dark); font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+</style>
+</head>
+<body>
+
+  <h1>🛰️ LEOP Pass Scheduler <span class="badge">Web Prototype · Step 1</span></h1>
+  <div class="subtitle">위성 1개 · 지상국 1개 패스 예측 — 데스크톱 버전의 궤도 계산 엔진(core/scheduler.py)을 브라우저에서 그대로 실행합니다 (Pyodide).</div>
+
+  <div id="status-log">대기 중... (페이지 로드 시 자동으로 파이썬 환경을 준비합니다. 최초 10~30초 정도 걸릴 수 있습니다)</div>
+
+  <div class="layout">
+    <div class="card form-card">
+      <fieldset>
+        <legend>위성 (TLE)</legend>
+        <label>위성 이름</label>
+        <input id="sat-name" value="ISS (ZARYA)">
+        <label>TLE Line 1</label>
+        <input id="tle1" value="1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9994">
+        <label>TLE Line 2</label>
+        <input id="tle2" value="2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.49309620 12345">
+      </fieldset>
+
+      <fieldset>
+        <legend>지상국</legend>
+        <label>지상국 이름</label>
+        <input id="station-name" value="Daejeon">
+        <div class="row2">
+          <div><label>위도 (Lat)</label><input id="station-lat" value="36.35"></div>
+          <div><label>경도 (Lon)</label><input id="station-lon" value="127.38"></div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>분석 기간 & 조건</legend>
+        <div class="row2">
+          <div><label>시작</label><input type="datetime-local" id="start-dt"></div>
+          <div><label>종료</label><input type="datetime-local" id="end-dt"></div>
+        </div>
+        <div class="row2">
+          <div><label>최소 고도각 (°)</label><input id="min-el" value="10"></div>
+          <div><label>최소 지속시간 (초)</label><input id="min-dur" value="60"></div>
+        </div>
+      </fieldset>
+
+      <button id="btn-calc" disabled>환경 준비 중...</button>
+    </div>
+
+    <div class="card result-card">
+      <div id="result-area">
+        <div class="empty-msg">아직 계산된 패스가 없습니다. 왼쪽에서 값을 입력하고 계산 버튼을 눌러주세요.</div>
+      </div>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script>
+  const logEl = document.getElementById('status-log');
+  function log(msg, cls) {
+    const span = document.createElement('span');
+    if (cls) span.className = cls;
+    span.textContent = msg + '\n';
+    logEl.appendChild(span);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // 기본 시작/종료 시각을 "지금 ~ 24시간 뒤"로 채워둠 (사용성)
+  function toLocalInputValue(d) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 24*3600*1000);
+  document.getElementById('start-dt').value = toLocalInputValue(now);
+  document.getElementById('end-dt').value = toLocalInputValue(tomorrow);
+
+  let pyodideReady = null;
+
+  async function setupPyodide() {
+    log('[1/4] Pyodide 코어 로딩 중...', 'info');
+    const pyodide = await loadPyodide();
+    log('✅ Pyodide 코어 로딩 완료', 'ok');
+
+    log('[2/4] micropip 로딩 중...', 'info');
+    await pyodide.loadPackage('micropip');
+    const micropip = pyodide.pyimport('micropip');
+    log('✅ micropip 준비 완료', 'ok');
+
+    log('[3/4] numpy / skyfield / sgp4 / jplephem 설치 중... (시간이 좀 걸립니다)', 'info');
+    await pyodide.loadPackage('numpy');
+    await micropip.install(['jplephem', 'sgp4', 'skyfield']);
+    log('✅ 궤도 계산 라이브러리 설치 완료', 'ok');
+
+    log('[4/4] 계산 엔진(scheduler_core.py) 불러오는 중...', 'info');
+    const coreCode = await (await fetch('py/scheduler_core.py')).text();
+    pyodide.FS.writeFile('scheduler_core.py', coreCode);
+    pyodide.runPython(`
+import sys
+sys.path.insert(0, '.')
+import scheduler_core
+    `);
+    log('✅ 준비 완료! 이제 계산할 수 있습니다.', 'ok');
+
+    return pyodide;
+  }
+
+  function renderResults(rows) {
+    const area = document.getElementById('result-area');
+    if (!rows.length) {
+      area.innerHTML = '<div class="empty-msg">이 조건에서는 가시 가능한 패스가 없습니다. 기간을 늘리거나 최소 고도각을 낮춰보세요.</div>';
+      return;
+    }
+    let html = `<table><thead><tr>
+      <th>지상국</th><th>위성</th><th>AOS</th><th>LOS</th><th>지속시간(초)</th><th>최대고도각(°)</th>
+    </tr></thead><tbody>`;
+    for (const r of rows) {
+      html += `<tr>
+        <td>${r.station}</td><td>${r.satellite}</td>
+        <td>${r.aos}</td><td>${r.los}</td>
+        <td>${r.duration}</td><td>${r.max_el}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    area.innerHTML = html;
+  }
+
+  async function runCalculation() {
+    const btn = document.getElementById('btn-calc');
+    btn.disabled = true;
+    btn.textContent = '계산 중...';
+    try {
+      const pyodide = await pyodideReady;
+
+      const satName = document.getElementById('sat-name').value;
+      const tle1 = document.getElementById('tle1').value;
+      const tle2 = document.getElementById('tle2').value;
+      const stationName = document.getElementById('station-name').value;
+      const lat = document.getElementById('station-lat').value;
+      const lon = document.getElementById('station-lon').value;
+      const startIso = document.getElementById('start-dt').value;
+      const endIso = document.getElementById('end-dt').value;
+      const minEl = document.getElementById('min-el').value;
+      const minDur = document.getElementById('min-dur').value;
+
+      pyodide.globals.set('_tle1', tle1);
+      pyodide.globals.set('_tle2', tle2);
+      pyodide.globals.set('_sat_name', satName);
+      pyodide.globals.set('_station_name', stationName);
+      pyodide.globals.set('_lat', lat);
+      pyodide.globals.set('_lon', lon);
+      pyodide.globals.set('_start_iso', startIso);
+      pyodide.globals.set('_end_iso', endIso);
+      pyodide.globals.set('_min_el', minEl);
+      pyodide.globals.set('_min_dur', minDur);
+
+      const resultProxy = await pyodide.runPythonAsync(`
+import json
+result = scheduler_core.calculate_single_pass_set(
+    _tle1, _tle2, _sat_name,
+    _station_name, _lat, _lon,
+    _start_iso, _end_iso,
+    float(_min_el), float(_min_dur)
+)
+json.dumps(result)
+      `);
+      const rows = JSON.parse(resultProxy);
+      renderResults(rows);
+      log(`✅ 계산 완료 — 패스 ${rows.length}개 발견`, 'ok');
+    } catch (e) {
+      log('❌ 계산 실패: ' + e.message, 'fail');
+      console.error(e);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🚀 패스 계산하기';
+    }
+  }
+
+  document.getElementById('btn-calc').addEventListener('click', runCalculation);
+
+  pyodideReady = setupPyodide().then(pyodide => {
+    document.getElementById('btn-calc').disabled = false;
+    document.getElementById('btn-calc').textContent = '🚀 패스 계산하기';
+    return pyodide;
+  }).catch(e => {
+    log('❌ 초기화 실패: ' + e.message, 'fail');
+  });
+</script>
+</body>
+</html>
