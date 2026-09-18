@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🛰️ LEOP Pass Scheduler (Web) — 1단계 프로토타입</title>
+<title>🛰️ LEOP Pass Scheduler (Web)</title>
 <style>
   :root {
     --bg: #f4f6f8; --card: #ffffff; --border: #d9dfe4;
     --primary: #1565c0; --primary-dark: #0d47a1; --text: #1a1a1a; --muted: #6b7280;
-    --ok: #2e7d32; --fail: #c62828;
+    --ok: #2e7d32; --fail: #c62828; --warn: #ef6c00;
   }
   * { box-sizing: border-box; }
   body { font-family: 'Segoe UI', 'Malgun Gothic', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
@@ -16,57 +16,62 @@
   .subtitle { color: var(--muted); margin-bottom: 20px; font-size: 14px; }
   .layout { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
-  .form-card { flex: 1; min-width: 340px; }
-  .result-card { flex: 2; min-width: 400px; }
+  .form-card { flex: 1; min-width: 360px; }
+  .result-card { flex: 2; min-width: 460px; }
   fieldset { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 14px; padding: 10px 12px; }
   legend { font-weight: 600; font-size: 13px; color: var(--primary-dark); padding: 0 6px; }
   label { display: block; font-size: 12px; color: var(--muted); margin-top: 8px; margin-bottom: 2px; }
-  input, textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: 'Consolas', monospace; }
+  input, textarea { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12.5px; font-family: 'Consolas', monospace; }
   textarea { resize: vertical; }
   .row2 { display: flex; gap: 10px; }
   .row2 > div { flex: 1; }
+  .row-check { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .row-check input[type=checkbox] { width: auto; }
+  .row-check label { margin: 0; font-size: 12.5px; color: var(--text); }
   button { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 14px; margin-top: 14px; width: 100%; }
   button:hover { background: var(--primary-dark); }
   button:disabled { background: #9e9e9e; cursor: not-allowed; }
-  #status-log { background: #0d1117; color: #c9d1d9; font-family: 'Consolas', monospace; font-size: 12px; padding: 12px; border-radius: 8px; min-height: 90px; max-height: 220px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 16px; }
-  .ok { color: #7ee787; }
-  .fail { color: #ff7b72; }
-  .info { color: #79c0ff; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  #status-log { background: #0d1117; color: #c9d1d9; font-family: 'Consolas', monospace; font-size: 12px; padding: 12px; border-radius: 8px; min-height: 60px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; margin-bottom: 16px; }
+  .ok { color: #7ee787; } .fail { color: #ff7b72; } .info { color: #79c0ff; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { padding: 7px 9px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
   th { background: #eef2f6; color: var(--primary-dark); position: sticky; top: 0; }
-  tr:hover { background: #f7fafd; }
   .empty-msg { color: var(--muted); text-align: center; padding: 30px; font-size: 13px; }
   .badge { display: inline-block; background: #e3f2fd; color: var(--primary-dark); font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+  .summary-bar { background: #eef7ee; border: 1px solid #c8e6c9; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px; color: #2e7d32; font-weight: 600; }
+  .status-Normal, .status-Concurrent { color: var(--ok); font-weight: 600; }
+  .status-Conflict { color: var(--fail); font-weight: 700; }
+  .status-Capped, .status-Shift, .status-No { color: var(--warn); font-weight: 600; }
+  .row-unselected { opacity: 0.55; }
+  .table-wrap { max-height: 560px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+  small.hint { display:block; color: var(--muted); font-size: 11px; margin-top: 4px; }
 </style>
 </head>
 <body>
 
-  <h1>🛰️ LEOP Pass Scheduler <span class="badge">Web Prototype · Step 1</span></h1>
-  <div class="subtitle">위성 1개 · 지상국 1개 패스 예측 — 데스크톱 버전의 궤도 계산 엔진(core/scheduler.py)을 브라우저에서 그대로 실행합니다 (Pyodide).</div>
+  <h1>🛰️ LEOP Pass Scheduler <span class="badge">Web · Step 2</span></h1>
+  <div class="subtitle">다중 위성 · 다중 지상국 · 안테나 RX/TX 용량 · 자동 충돌 해결 — 데스크톱 버전의 스케줄링 엔진(core/scheduler.py)을 브라우저에서 그대로 실행합니다.</div>
 
-  <div id="status-log">대기 중... (페이지 로드 시 자동으로 파이썬 환경을 준비합니다. 최초 10~30초 정도 걸릴 수 있습니다)</div>
+  <div id="status-log">대기 중... (최초 로딩에 10~30초 정도 걸릴 수 있습니다)</div>
 
   <div class="layout">
     <div class="card form-card">
       <fieldset>
-        <legend>위성 (TLE)</legend>
-        <label>위성 이름</label>
-        <input id="sat-name" value="ISS (ZARYA)">
-        <label>TLE Line 1</label>
-        <input id="tle1" value="1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9994">
-        <label>TLE Line 2</label>
-        <input id="tle2" value="2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.49309620 12345">
+        <legend>위성 (TLE, 여러 개 붙여넣기 가능)</legend>
+        <textarea id="tle-text" rows="7">ISS (ZARYA)
+1 25544U 98067A   24001.50000000  .00016717  00000-0  10270-3 0  9994
+2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.49309620 12345
+NOAA 19
+1 33591U 09005A   24001.50000000  .00000123  00000-0  12345-3 0  9991
+2 33591  99.1234 100.1234 0012345  90.1234 270.1234 14.12345678123456</textarea>
+        <small class="hint">형식: 위성이름 / TLE 1행 / TLE 2행, 이 3줄을 위성 개수만큼 반복</small>
       </fieldset>
 
       <fieldset>
-        <legend>지상국</legend>
-        <label>지상국 이름</label>
-        <input id="station-name" value="Daejeon">
-        <div class="row2">
-          <div><label>위도 (Lat)</label><input id="station-lat" value="36.35"></div>
-          <div><label>경도 (Lon)</label><input id="station-lon" value="127.38"></div>
-        </div>
+        <legend>지상국 (한 줄에 하나씩)</legend>
+        <textarea id="stations-text" rows="4">Daejeon, 36.35, 127.38, Y, Y, 2, 1
+Jeju, 33.50, 126.52, Y, Y, 1, 1</textarea>
+        <small class="hint">이름, 위도, 경도, 다운로드가능(Y/N), 커맨딩가능(Y/N), RX용량, TX용량 — 데스크톱 버전 stations/*.txt와 같은 형식</small>
       </fieldset>
 
       <fieldset>
@@ -78,6 +83,18 @@
         <div class="row2">
           <div><label>최소 고도각 (°)</label><input id="min-el" value="10"></div>
           <div><label>최소 지속시간 (초)</label><input id="min-dur" value="60"></div>
+        </div>
+        <div class="row-check">
+          <input type="checkbox" id="chk-equalize" checked>
+          <label for="chk-equalize">위성별 균등 분배 (Equalization)</label>
+        </div>
+        <div class="row-check">
+          <input type="checkbox" id="chk-shift">
+          <label for="chk-shift">근무시간 필터 사용 (전체 지상국 공통, 매일 동일 시간대)</label>
+        </div>
+        <div class="row2">
+          <div><label>근무 시작 (UTC HH:MM)</label><input id="shift-start" value="09:00"></div>
+          <div><label>근무 종료 (UTC HH:MM)</label><input id="shift-end" value="18:00"></div>
         </div>
       </fieldset>
 
@@ -102,15 +119,14 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  // 기본 시작/종료 시각을 "지금 ~ 24시간 뒤"로 채워둠 (사용성)
   function toLocalInputValue(d) {
     const pad = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
   const now = new Date();
-  const tomorrow = new Date(now.getTime() + 24*3600*1000);
+  const in3days = new Date(now.getTime() + 3*24*3600*1000);
   document.getElementById('start-dt').value = toLocalInputValue(now);
-  document.getElementById('end-dt').value = toLocalInputValue(tomorrow);
+  document.getElementById('end-dt').value = toLocalInputValue(in3days);
 
   let pyodideReady = null;
 
@@ -129,17 +145,25 @@
     await micropip.install(['jplephem', 'sgp4', 'skyfield']);
     log('✅ 궤도 계산 라이브러리 설치 완료', 'ok');
 
-    log('[4/4] 계산 엔진(scheduler_core.py) 불러오는 중...', 'info');
-    const coreCode = await (await fetch('py/scheduler_core.py')).text();
-    pyodide.FS.writeFile('scheduler_core.py', coreCode);
+    log('[4/4] 스케줄링 엔진(scheduler_full.py) 불러오는 중...', 'info');
+    const coreCode = await (await fetch('py/scheduler_full.py')).text();
+    pyodide.FS.writeFile('scheduler_full.py', coreCode);
     pyodide.runPython(`
 import sys
 sys.path.insert(0, '.')
-import scheduler_core
+import scheduler_full
     `);
     log('✅ 준비 완료! 이제 계산할 수 있습니다.', 'ok');
-
     return pyodide;
+  }
+
+  function statusClass(status) {
+    if (status.startsWith('Conflict')) return 'status-Conflict';
+    if (status.startsWith('Concurrent') || status === 'Normal') return 'status-Concurrent';
+    if (status.startsWith('Capped')) return 'status-Capped';
+    if (status.startsWith('Shift')) return 'status-Shift';
+    if (status.startsWith('No Antenna')) return 'status-No';
+    return '';
   }
 
   function renderResults(rows) {
@@ -148,62 +172,102 @@ import scheduler_core
       area.innerHTML = '<div class="empty-msg">이 조건에서는 가시 가능한 패스가 없습니다. 기간을 늘리거나 최소 고도각을 낮춰보세요.</div>';
       return;
     }
-    let html = `<table><thead><tr>
-      <th>지상국</th><th>위성</th><th>AOS</th><th>LOS</th><th>지속시간(초)</th><th>최대고도각(°)</th>
+    const selectedCount = rows.filter(r => r.selected).length;
+    let html = `<div class="summary-bar">📊 전체 ${rows.length}개 패스 중 <b>${selectedCount}개 선택됨</b> (지상국 용량/충돌 반영 결과)</div>`;
+    html += `<div class="table-wrap"><table><thead><tr>
+      <th>선택</th><th>지상국</th><th>위성</th><th>AOS</th><th>LOS</th><th>지속(초)</th><th>최대고도(°)</th><th>Pass#</th><th>상태</th>
     </tr></thead><tbody>`;
     for (const r of rows) {
-      html += `<tr>
+      html += `<tr class="${r.selected ? '' : 'row-unselected'}">
+        <td>${r.selected ? '✅' : '—'}</td>
         <td>${r.station}</td><td>${r.satellite}</td>
         <td>${r.aos}</td><td>${r.los}</td>
-        <td>${r.duration}</td><td>${r.max_el}</td>
+        <td>${r.duration}</td><td>${r.max_el}</td><td>${r.pass_no}</td>
+        <td class="${statusClass(r.status)}">${r.status}</td>
       </tr>`;
     }
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     area.innerHTML = html;
   }
 
   async function runCalculation() {
     const btn = document.getElementById('btn-calc');
     btn.disabled = true;
-    btn.textContent = '계산 중...';
+    btn.textContent = '계산 중... (위성/지상국이 많으면 수 초~수십 초 걸릴 수 있습니다)';
     try {
       const pyodide = await pyodideReady;
 
-      const satName = document.getElementById('sat-name').value;
-      const tle1 = document.getElementById('tle1').value;
-      const tle2 = document.getElementById('tle2').value;
-      const stationName = document.getElementById('station-name').value;
-      const lat = document.getElementById('station-lat').value;
-      const lon = document.getElementById('station-lon').value;
+      const tleText = document.getElementById('tle-text').value;
+      const stationsText = document.getElementById('stations-text').value;
       const startIso = document.getElementById('start-dt').value;
       const endIso = document.getElementById('end-dt').value;
       const minEl = document.getElementById('min-el').value;
       const minDur = document.getElementById('min-dur').value;
+      const equalize = document.getElementById('chk-equalize').checked;
+      const useShift = document.getElementById('chk-shift').checked;
+      const shiftStart = document.getElementById('shift-start').value;
+      const shiftEnd = document.getElementById('shift-end').value;
 
-      pyodide.globals.set('_tle1', tle1);
-      pyodide.globals.set('_tle2', tle2);
-      pyodide.globals.set('_sat_name', satName);
-      pyodide.globals.set('_station_name', stationName);
-      pyodide.globals.set('_lat', lat);
-      pyodide.globals.set('_lon', lon);
+      pyodide.globals.set('_tle_text', tleText);
+      pyodide.globals.set('_stations_text', stationsText);
       pyodide.globals.set('_start_iso', startIso);
       pyodide.globals.set('_end_iso', endIso);
       pyodide.globals.set('_min_el', minEl);
       pyodide.globals.set('_min_dur', minDur);
+      pyodide.globals.set('_equalize', equalize);
+      pyodide.globals.set('_use_shift', useShift);
+      pyodide.globals.set('_shift_start', shiftStart);
+      pyodide.globals.set('_shift_end', shiftEnd);
 
       const resultProxy = await pyodide.runPythonAsync(`
 import json
-result = scheduler_core.calculate_single_pass_set(
-    _tle1, _tle2, _sat_name,
-    _station_name, _lat, _lon,
-    _start_iso, _end_iso,
-    float(_min_el), float(_min_dur)
+from datetime import datetime, timezone, time as dtime
+
+tle_data = scheduler_full.parse_tle_text(_tle_text)
+station_configs = scheduler_full.parse_stations_text(_stations_text)
+
+def _parse_local_dt(s):
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    raise ValueError(f"날짜 형식 오류: {s}")
+
+start_dt = _parse_local_dt(_start_iso).replace(tzinfo=timezone.utc)
+end_dt = _parse_local_dt(_end_iso).replace(tzinfo=timezone.utc)
+
+is_pass_eligible = None
+if _use_shift:
+    sh = dtime.fromisoformat(_shift_start)
+    eh = dtime.fromisoformat(_shift_end)
+    def is_pass_eligible(p):
+        aos_time = p['aos'].time()
+        if sh <= eh:
+            return sh <= aos_time < eh
+        else:
+            return aos_time >= sh or aos_time < eh
+
+result = scheduler_full.calculate_passes(
+    tle_data, station_configs, start_dt, end_dt,
+    float(_min_el), float(_min_dur),
+    equalize_allocation=bool(_equalize),
+    is_pass_eligible=is_pass_eligible
 )
-json.dumps(result)
+
+formatted = [{
+    "station": p["station"], "satellite": p["satellite"],
+    "aos": p["aos"].strftime("%Y-%m-%d %H:%M:%S"),
+    "los": p["los"].strftime("%Y-%m-%d %H:%M:%S"),
+    "duration": p["duration"], "max_el": p["max_el"],
+    "pass_no": p["pass_no"], "status": p["status"], "selected": p["selected"]
+} for p in result]
+
+json.dumps(formatted)
       `);
       const rows = JSON.parse(resultProxy);
       renderResults(rows);
-      log(`✅ 계산 완료 — 패스 ${rows.length}개 발견`, 'ok');
+      log(`✅ 계산 완료 — 총 ${rows.length}개 패스 (선택 ${rows.filter(r=>r.selected).length}개)`, 'ok');
     } catch (e) {
       log('❌ 계산 실패: ' + e.message, 'fail');
       console.error(e);
