@@ -90,12 +90,17 @@ Jeju, 33.50, 126.52, Y, Y, 1, 1</textarea>
         </div>
         <div class="row-check">
           <input type="checkbox" id="chk-shift">
-          <label for="chk-shift">근무시간 필터 사용 (전체 지상국 공통, 매일 동일 시간대)</label>
+          <label for="chk-shift">근무시간 필터 사용</label>
         </div>
-        <div class="row2">
-          <div><label>근무 시작 (UTC HH:MM)</label><input id="shift-start" value="09:00"></div>
-          <div><label>근무 종료 (UTC HH:MM)</label><input id="shift-end" value="18:00"></div>
-        </div>
+        <textarea id="shift-rules-text" rows="2" placeholder="*, 09:00, 18:00">*, 09:00, 18:00
+Jeju, 22:00, 06:00</textarea>
+        <small class="hint">지상국명(또는 전체는 *), 시작(UTC HH:MM), 종료(HH:MM) — 한 줄에 규칙 하나. 시작&gt;종료면 자정 넘김(야간)으로 처리. 같은 지상국에 규칙이 여러 개면 그 중 하나라도 맞으면 통과(OR)</small>
+      </fieldset>
+
+      <fieldset>
+        <legend>🔧 안테나 점검 일정 (선택)</legend>
+        <textarea id="overrides-text" rows="3" placeholder="지상국, 시작(YYYY-MM-DDTHH:MM), 종료, RX(빈칸=변경없음), TX(빈칸=변경없음), 사유"></textarea>
+        <small class="hint">예: Daejeon, 2026-01-02T09:00, 2026-01-02T18:00, 1, , 안테나 점검 — 그 시간대만 용량이 일시적으로 바뀝니다</small>
       </fieldset>
 
       <button id="btn-calc" disabled>환경 준비 중...</button>
@@ -205,8 +210,8 @@ import scheduler_full
       const minDur = document.getElementById('min-dur').value;
       const equalize = document.getElementById('chk-equalize').checked;
       const useShift = document.getElementById('chk-shift').checked;
-      const shiftStart = document.getElementById('shift-start').value;
-      const shiftEnd = document.getElementById('shift-end').value;
+      const shiftRulesText = document.getElementById('shift-rules-text').value;
+      const overridesText = document.getElementById('overrides-text').value;
 
       pyodide.globals.set('_tle_text', tleText);
       pyodide.globals.set('_stations_text', stationsText);
@@ -216,8 +221,8 @@ import scheduler_full
       pyodide.globals.set('_min_dur', minDur);
       pyodide.globals.set('_equalize', equalize);
       pyodide.globals.set('_use_shift', useShift);
-      pyodide.globals.set('_shift_start', shiftStart);
-      pyodide.globals.set('_shift_end', shiftEnd);
+      pyodide.globals.set('_shift_rules_text', shiftRulesText);
+      pyodide.globals.set('_overrides_text', overridesText);
 
       const resultProxy = await pyodide.runPythonAsync(`
 import json
@@ -237,22 +242,67 @@ def _parse_local_dt(s):
 start_dt = _parse_local_dt(_start_iso).replace(tzinfo=timezone.utc)
 end_dt = _parse_local_dt(_end_iso).replace(tzinfo=timezone.utc)
 
-is_pass_eligible = None
+# --- 💡 [2.5단계] 지상국별 근무시간 규칙 파싱 ---
+# 한 줄에 "지상국명(또는 *), 시작HH:MM, 종료HH:MM". 같은 지상국에 여러 규칙이 있으면
+# 그 중 하나라도 맞으면 통과(OR) - 데스크톱 버전과 동일한 정책입니다.
+shift_rules = []
 if _use_shift:
-    sh = dtime.fromisoformat(_shift_start)
-    eh = dtime.fromisoformat(_shift_end)
+    for line in _shift_rules_text.splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = [p.strip() for p in line.split(',')]
+        if len(parts) < 3:
+            continue
+        try:
+            shift_rules.append((parts[0], dtime.fromisoformat(parts[1]), dtime.fromisoformat(parts[2])))
+        except ValueError:
+            continue
+
+is_pass_eligible = None
+if shift_rules:
     def is_pass_eligible(p):
+        st_name = p['station']
         aos_time = p['aos'].time()
-        if sh <= eh:
-            return sh <= aos_time < eh
-        else:
-            return aos_time >= sh or aos_time < eh
+        for station_pat, sh, eh in shift_rules:
+            if station_pat != '*' and station_pat != st_name:
+                continue
+            in_window = (sh <= aos_time < eh) if sh <= eh else (aos_time >= sh or aos_time < eh)
+            if in_window:
+                return True
+        # 이 지상국에 걸리는 규칙 중 어느 것도 통과 못 하면(또는 규칙 자체가 없으면) 자격 없음
+        # (데스크톱 버전과 동일한 정책: 적용 규칙이 없는 지상국은 "가용 시간 없음")
+        return False
+
+# --- 💡 [2.5단계] 안테나 점검 일정(시간대별 용량 변경) 파싱 ---
+# 한 줄에 "지상국명, 시작(YYYY-MM-DDTHH:MM), 종료, RX(빈칸=변경없음), TX(빈칸=변경없음), 사유"
+antenna_overrides = []
+for line in _overrides_text.splitlines():
+    line = line.strip()
+    if not line or line.startswith('#'):
+        continue
+    parts = [p.strip() for p in line.split(',')]
+    if len(parts) < 3:
+        continue
+    try:
+        rx_val = int(parts[3]) if len(parts) > 3 and parts[3] != '' else None
+        tx_val = int(parts[4]) if len(parts) > 4 and parts[4] != '' else None
+        antenna_overrides.append({
+            "station": parts[0],
+            "start_dt": _parse_local_dt(parts[1]),
+            "end_dt": _parse_local_dt(parts[2]),
+            "rx_capacity": rx_val, "tx_capacity": tx_val,
+            "reason": parts[5] if len(parts) > 5 else ""
+        })
+    except (ValueError, IndexError):
+        continue
 
 result = scheduler_full.calculate_passes(
     tle_data, station_configs, start_dt, end_dt,
     float(_min_el), float(_min_dur),
     equalize_allocation=bool(_equalize),
-    is_pass_eligible=is_pass_eligible
+    is_pass_eligible=is_pass_eligible,
+    antenna_overrides=antenna_overrides
 )
 
 formatted = [{
