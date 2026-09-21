@@ -113,6 +113,28 @@ Jeju, 22:00, 06:00</textarea>
     </div>
   </div>
 
+  <h1 style="margin-top:34px;">🎯 미션 플랜 배정 <span class="badge">Web · Step 2.6 · TX 자원 추적</span></h1>
+  <div class="subtitle">위의 패스 계산 결과(선택된 패스만) 위에, 위성별 작업 순서를 배정합니다 — 지상국의 CMD/DOWN 지원 여부와 TX 채널 여유(점검 일정 포함)까지 확인합니다.</div>
+
+  <div class="layout">
+    <div class="card form-card">
+      <fieldset>
+        <legend>위성별 작업 목록 (순서대로 처리)</legend>
+        <textarea id="plan-text" rows="6">ISS (ZARYA), 1, Initial Contact & Health Check, CMD, 5, 60, NONE
+ISS (ZARYA), 2, Telemetry Downlink, DOWN, 10, 120, Initial Contact & Health Check
+NOAA 19, 1, Initial Contact, CMD, 5, 60, NONE</textarea>
+        <small class="hint">위성명(TLE 이름과 일치), 순번, 작업명, 요구자원(CMD/DOWN/BOTH/NONE), 최소고도각, 최소지속시간(초), 선행작업명(없으면 NONE)</small>
+      </fieldset>
+      <button id="btn-mission" disabled>먼저 위 패스 계산을 실행하세요</button>
+    </div>
+
+    <div class="card result-card">
+      <div id="mission-result-area">
+        <div class="empty-msg">아직 배정된 미션 스케줄이 없습니다.</div>
+      </div>
+    </div>
+  </div>
+
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
 <script>
   const logEl = document.getElementById('status-log');
@@ -150,13 +172,16 @@ Jeju, 22:00, 06:00</textarea>
     await micropip.install(['jplephem', 'sgp4', 'skyfield']);
     log('✅ 궤도 계산 라이브러리 설치 완료', 'ok');
 
-    log('[4/4] 스케줄링 엔진(scheduler_full.py) 불러오는 중...', 'info');
+    log('[4/4] 스케줄링 엔진(scheduler_full.py, tab3_engine.py) 불러오는 중...', 'info');
     const coreCode = await (await fetch('py/scheduler_full.py')).text();
+    const tab3Code = await (await fetch('py/tab3_engine.py')).text();
     pyodide.FS.writeFile('scheduler_full.py', coreCode);
+    pyodide.FS.writeFile('tab3_engine.py', tab3Code);
     pyodide.runPython(`
 import sys
 sys.path.insert(0, '.')
 import scheduler_full
+import tab3_engine
     `);
     log('✅ 준비 완료! 이제 계산할 수 있습니다.', 'ok');
     return pyodide;
@@ -318,6 +343,10 @@ json.dumps(formatted)
       const rows = JSON.parse(resultProxy);
       renderResults(rows);
       log(`✅ 계산 완료 — 총 ${rows.length}개 패스 (선택 ${rows.filter(r=>r.selected).length}개)`, 'ok');
+
+      const missionBtn = document.getElementById('btn-mission');
+      missionBtn.disabled = false;
+      missionBtn.textContent = '🎯 미션 스케줄 배정하기';
     } catch (e) {
       log('❌ 계산 실패: ' + e.message, 'fail');
       console.error(e);
@@ -327,7 +356,78 @@ json.dumps(formatted)
     }
   }
 
+  function renderMissionResults(rows) {
+    const area = document.getElementById('mission-result-area');
+    if (!rows.length) {
+      area.innerHTML = '<div class="empty-msg">배정할 패스가 없습니다.</div>';
+      return;
+    }
+    const allocCount = rows.filter(r => r.status === 'Allocated').length;
+    let html = `<div class="summary-bar">🎯 전체 ${rows.length}개 패스 중 <b>${allocCount}개 작업 배정됨(Allocated)</b></div>`;
+    html += `<div class="table-wrap"><table><thead><tr>
+      <th>지상국</th><th>위성</th><th>AOS</th><th>상태</th><th>내용</th>
+    </tr></thead><tbody>`;
+    for (const r of rows) {
+      const cls = r.status === 'Allocated' ? 'status-Concurrent' : (r.status === 'Bypassed' ? 'status-Conflict' : 'status-Capped');
+      html += `<tr>
+        <td>${r.station}</td><td>${r.satellite}</td><td>${r.aos}</td>
+        <td class="${cls}">${r.status}</td><td>${r.activity}</td>
+      </tr>`;
+    }
+    html += '</tbody></table></div>';
+    area.innerHTML = html;
+  }
+
+  async function runMissionSchedule() {
+    const btn = document.getElementById('btn-mission');
+    btn.disabled = true;
+    btn.textContent = '배정 중...';
+    try {
+      const pyodide = await pyodideReady;
+      const planText = document.getElementById('plan-text').value;
+      pyodide.globals.set('_plan_text', planText);
+
+      const resultProxy = await pyodide.runPythonAsync(`
+import json
+
+if 'result' not in globals():
+    raise RuntimeError('먼저 위에서 패스 계산을 실행해주세요.')
+
+raw_constraint_data = []
+for line in _plan_text.splitlines():
+    line = line.strip()
+    if not line or line.startswith('#'):
+        continue
+    parts = [p.strip() for p in line.split(',')]
+    if len(parts) < 7:
+        continue
+    try:
+        raw_constraint_data.append({
+            "sat_id": parts[0], "sequence_id": int(parts[1]), "main": parts[2],
+            "req_cap": parts[3].upper(), "min_el": float(parts[4]), "min_dur": float(parts[5]),
+            "pre_req_main": parts[6]
+        })
+    except (ValueError, IndexError):
+        continue
+
+selected_passes = [p for p in result if p['selected']]
+mission_result = tab3_engine.run_mission_schedule(selected_passes, raw_constraint_data, station_configs, antenna_overrides)
+json.dumps(mission_result)
+      `);
+      const rows = JSON.parse(resultProxy);
+      renderMissionResults(rows);
+      log(`✅ 미션 스케줄 배정 완료 — ${rows.filter(r=>r.status==='Allocated').length}개 배정됨`, 'ok');
+    } catch (e) {
+      log('❌ 미션 배정 실패: ' + e.message, 'fail');
+      console.error(e);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🎯 미션 스케줄 배정하기';
+    }
+  }
+
   document.getElementById('btn-calc').addEventListener('click', runCalculation);
+  document.getElementById('btn-mission').addEventListener('click', runMissionSchedule);
 
   pyodideReady = setupPyodide().then(pyodide => {
     document.getElementById('btn-calc').disabled = false;
