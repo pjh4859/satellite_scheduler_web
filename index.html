@@ -53,6 +53,17 @@
   .small-btn:hover { background: #37474f; }
   .dl-btn { background: #2e7d32; color: white; border: none; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; margin-left: 10px; }
   .dl-btn:hover { background: #1b5e20; }
+
+  /* --- Gantt Chart --- */
+  .legend-row { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+  .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-left: 10px; margin-right: 2px; }
+  .gantt-row { display: flex; align-items: center; height: 30px; border-bottom: 1px solid #f0f0f0; }
+  .gantt-row-label { width: 110px; flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--primary-dark); padding-right: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gantt-track { position: relative; flex: 1; height: 20px; background: #fafbfc; border-radius: 4px; }
+  .gantt-bar { position: absolute; top: 1px; height: 18px; border-radius: 3px; background: #1565c0; cursor: default; min-width: 2px; }
+  .gantt-bar.unselected { background: #bdbdbd; opacity: 0.6; }
+  .gantt-bar:hover { outline: 2px solid #0d47a1; z-index: 5; }
+  .gantt-axis { display: flex; margin-left: 110px; padding-left: 8px; font-size: 10px; color: var(--muted); border-top: 1px solid var(--border); padding-top: 4px; margin-top: 4px; justify-content: space-between; }
 </style>
 </head>
 <body>
@@ -127,6 +138,17 @@ Jeju, 22:00, 06:00</textarea>
         <div class="empty-msg">아직 계산된 패스가 없습니다. 왼쪽에서 값을 입력하고 계산 버튼을 눌러주세요.</div>
       </div>
     </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;" id="gantt-card" hidden>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <b>📊 Gantt 타임라인</b>
+      <div class="legend-row">
+        <span class="legend-dot" style="background:#1565c0"></span>선택됨
+        <span class="legend-dot" style="background:#bdbdbd"></span>미선택/충돌
+      </div>
+    </div>
+    <div id="gantt-area"></div>
   </div>
 
   <h1 style="margin-top:34px;">🎯 미션 플랜 배정 <span class="badge">Web · Step 2.6 · TX 자원 추적</span></h1>
@@ -214,6 +236,43 @@ import tab3_engine
     if (status.startsWith('Shift')) return 'status-Shift';
     if (status.startsWith('No Antenna')) return 'status-No';
     return '';
+  }
+
+  function renderGanttChart(rows) {
+    const card = document.getElementById('gantt-card');
+    const area = document.getElementById('gantt-area');
+    if (!rows.length) { card.hidden = true; return; }
+    card.hidden = false;
+
+    // 전체 시간 범위(min~max) 계산 - AOS/LOS 문자열("YYYY-MM-DD HH:MM:SS")은 그대로 비교/정렬 가능
+    const toMs = (s) => new Date(s.replace(' ', 'T') + 'Z').getTime();
+    let minT = Infinity, maxT = -Infinity;
+    for (const r of rows) {
+      minT = Math.min(minT, toMs(r.aos));
+      maxT = Math.max(maxT, toMs(r.los));
+    }
+    const span = Math.max(1, maxT - minT);
+
+    // 지상국별로 묶기
+    const byStation = {};
+    for (const r of rows) {
+      (byStation[r.station] = byStation[r.station] || []).push(r);
+    }
+
+    let html = '';
+    for (const station of Object.keys(byStation).sort()) {
+      html += `<div class="gantt-row"><div class="gantt-row-label" title="${station}">${station}</div><div class="gantt-track">`;
+      for (const r of byStation[station]) {
+        const leftPct = ((toMs(r.aos) - minT) / span) * 100;
+        const widthPct = Math.max(0.3, ((toMs(r.los) - toMs(r.aos)) / span) * 100);
+        const cls = r.selected ? '' : 'unselected';
+        const title = `${r.satellite} | ${r.aos} ~ ${r.los} | ${r.status}`;
+        html += `<div class="gantt-bar ${cls}" style="left:${leftPct}%; width:${widthPct}%;" title="${title}"></div>`;
+      }
+      html += `</div></div>`;
+    }
+    html += `<div class="gantt-axis"><span>${new Date(minT).toISOString().slice(0,16).replace('T',' ')}</span><span>${new Date(maxT).toISOString().slice(0,16).replace('T',' ')}</span></div>`;
+    area.innerHTML = html;
   }
 
   function renderResults(rows) {
@@ -368,6 +427,7 @@ json.dumps(formatted)
       `);
       const rows = JSON.parse(resultProxy);
       renderResults(rows);
+      renderGanttChart(rows);
       log(`✅ 계산 완료 — 총 ${rows.length}개 패스 (선택 ${rows.filter(r=>r.selected).length}개)`, 'ok');
 
       const missionBtn = document.getElementById('btn-mission');
