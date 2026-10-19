@@ -1,0 +1,14 @@
+{
+  "name": "LEOP Pass Scheduler",
+  "short_name": "LEOP Scheduler",
+  "description": "위성 패스 예측 및 지상국 자원 스케줄링 (오프라인 지원)",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#1565c0",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
